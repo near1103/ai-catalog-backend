@@ -16,6 +16,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(
     properties = {
       "spring.ai.model.chat=google-genai",
+      "spring.ai.google.genai.chat.model=gemini-2.5-flash",
       "spring.ai.google.genai.api-key=placeholder-not-a-real-key"
     })
 class GeminiConfigurationTests {

@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "spring.ai.model.chat", havingValue = "google-genai")
 public class GeminiConfig {
+  public static final int TIMEOUT_MS = 60_000;
   @Bean(destroyMethod = "close")
   Client googleGenAiClient(GoogleGenAiConnectionProperties properties) {
     String key = properties.getApiKey();
@@ -21,7 +22,7 @@ public class GeminiConfig {
         .apiKey(key)
         .httpOptions(
             HttpOptions.builder()
-                .timeout(60000)
+                .timeout(TIMEOUT_MS)
                 .retryOptions(HttpRetryOptions.builder().attempts(1).build())
                 .build())
         .build();

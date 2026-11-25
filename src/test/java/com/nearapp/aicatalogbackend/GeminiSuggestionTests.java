@@ -113,10 +113,10 @@ class GeminiSuggestionTests {
             "Description",
             Map.of("color", "black"),
             List.of(new ProductImage("https://private-image", "private-key", true)),
-            null,
+            "hidden-reference-leaf",
             ProductStatus.DRAFT,
-            null,
-            null,
+            new com.nearapp.aicatalogbackend.model.AiSuggestion("old-root", "old-section", "old-leaf", "old-reason", now),
+            com.nearapp.aicatalogbackend.model.CategorySource.AI,
             now,
             now);
     var result =
@@ -132,6 +132,10 @@ class GeminiSuggestionTests {
     assertTrue(text.contains("root"));
     assertFalse(text.contains("private-image"));
     assertFalse(text.contains("private-key"));
+    assertFalse(text.contains("hidden-reference-leaf"));
+    assertFalse(text.contains("old-leaf"));
+    assertFalse(text.contains("categorySource"));
+    assertFalse(text.contains("aiSuggestion"));
   }
 
   @Test

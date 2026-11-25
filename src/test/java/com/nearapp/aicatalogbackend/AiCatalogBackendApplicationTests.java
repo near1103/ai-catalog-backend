@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.ai.model.chat=none")
 class AiCatalogBackendApplicationTests {
   @MockitoBean FirebaseApp app;
   @MockitoBean FirebaseAuth auth;

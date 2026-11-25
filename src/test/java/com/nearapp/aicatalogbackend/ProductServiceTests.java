@@ -262,7 +262,20 @@ class ProductServiceTests {
 
   @Test
   void acceptSuggestionSetsAiSource() {
-    assertEquals(CategorySource.AI, service.acceptSuggestion("p").categorySource());
+    var suggestion = new AiSuggestion("root", "section", "other", "Reason", Instant.now());
+    when(ai.suggest(any(), any())).thenReturn(suggestion);
+    service.suggest("p");
+    var accepted = service.acceptSuggestion("p");
+    assertEquals(CategorySource.AI, accepted.categorySource());
+    assertEquals("other", accepted.categoryId());
+  }
+
+  @Test
+  void rejectingSuggestionDoesNotChangeAssignedCategory() {
+    var result = service.rejectSuggestion("p");
+    assertNull(result.aiSuggestion());
+    assertEquals("leaf", result.categoryId());
+    assertEquals(CategorySource.MANUAL, result.categorySource());
   }
 
   @Test
