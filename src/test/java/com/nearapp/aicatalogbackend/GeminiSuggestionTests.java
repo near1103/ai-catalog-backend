@@ -3,6 +3,8 @@ package com.nearapp.aicatalogbackend;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
@@ -13,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.nearapp.aicatalogbackend.exception.ApiException;
 import com.nearapp.aicatalogbackend.model.Category;
+import com.nearapp.aicatalogbackend.model.AiSuggestion;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductImage;
 import com.nearapp.aicatalogbackend.model.ProductStatus;
@@ -103,7 +106,7 @@ class GeminiSuggestionTests {
                 List.of(
                     new Generation(
                         new AssistantMessage(
-                            "{\"rootCategoryId\":\"root\",\"sectionCategoryId\":\"section\",\"leafCategoryId\":\"leaf\",\"reason\":\"A"
+                            "{\"leafCategoryId\":\"leaf\",\"reason\":\"A"
                                 + " phone\"}")))));
     var now = Instant.now();
     var product =
@@ -121,8 +124,10 @@ class GeminiSuggestionTests {
             now);
     var result =
         new GeminiCategorySuggestionService(provider, new ObjectMapper())
-            .suggest(product, List.of(new Category("root", "Root", null, 1, null)));
+            .suggest(product, categoryTree());
     assertEquals("leaf", result.leafCategoryId());
+    assertEquals("section", result.sectionCategoryId());
+    assertEquals("root", result.rootCategoryId());
     assertNotNull(result.generatedAt());
     var request = ArgumentCaptor.forClass(Prompt.class);
     verify(model, times(1)).call(request.capture());
@@ -147,5 +152,92 @@ class GeminiSuggestionTests {
         () ->
             new GeminiCategorySuggestionService(provider, new ObjectMapper())
                 .suggest(null, List.of()));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void proposesPathForEmptyTreeWithServerGeneratedIds() {
+    ObjectProvider<ChatModel> provider = mock(ObjectProvider.class);
+    ChatModel model = mock(ChatModel.class);
+    when(provider.getIfAvailable()).thenReturn(model);
+    when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+    when(model.call(any(Prompt.class))).thenReturn(new ChatResponse(List.of(new Generation(
+        new AssistantMessage("""
+            {"type":"NEW_CATEGORY","reason":"Empty tree","parentId":null,
+             "names":[" Electronics ","Networking","Mesh systems"]}
+            """)))));
+    var service = new GeminiCategorySuggestionService(provider, new ObjectMapper());
+    var first = service.suggest(product(), List.of());
+    var second = service.suggest(product(), List.of());
+    assertEquals(AiSuggestion.Type.NEW_CATEGORY, first.type());
+    assertNull(first.proposal().parentId());
+    assertEquals(List.of("Electronics", "Networking", "Mesh systems"), first.proposal().names());
+    assertNotEquals(first.proposal().id(), second.proposal().id());
+    var request = ArgumentCaptor.forClass(Prompt.class);
+    verify(model, times(2)).call(request.capture());
+    var prompt = request.getValue().getContents();
+    assertTrue(prompt.contains("\"oneOf\""));
+    assertTrue(prompt.contains("\"items\": {\"type\": \"string\""));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void retriesTemporaryProviderFailureOnce() {
+    ObjectProvider<ChatModel> provider = mock(ObjectProvider.class);
+    ChatModel model = mock(ChatModel.class);
+    when(provider.getIfAvailable()).thenReturn(model);
+    when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+    var unavailable = new RuntimeException(
+        new com.google.genai.errors.ServerException(503, "UNAVAILABLE", "Provider overloaded"));
+    when(model.call(any(Prompt.class))).thenThrow(unavailable).thenReturn(
+        new ChatResponse(List.of(new Generation(new AssistantMessage("""
+            {"rootCategoryId":"root","sectionCategoryId":"section","leafCategoryId":"leaf","reason":"Fit"}
+            """)))));
+    var service = new GeminiCategorySuggestionService(provider, new ObjectMapper());
+    assertEquals("leaf", service.suggest(product(), categoryTree()).leafCategoryId());
+    verify(model, times(2)).call(any(Prompt.class));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void repeatedProviderFailureReturnsServiceUnavailable() {
+    ObjectProvider<ChatModel> provider = mock(ObjectProvider.class);
+    ChatModel model = mock(ChatModel.class);
+    when(provider.getIfAvailable()).thenReturn(model);
+    when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+    when(model.call(any(Prompt.class))).thenThrow(new RuntimeException(
+        new com.google.genai.errors.ServerException(503, "UNAVAILABLE", "Provider overloaded")));
+    var service = new GeminiCategorySuggestionService(provider, new ObjectMapper());
+    assertEquals(503, assertThrows(ApiException.class,
+        () -> service.suggest(product(), List.of())).status().value());
+    verify(model, times(2)).call(any(Prompt.class));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void correctsInventedLeafWithProposalUnderExistingGroup() {
+    ObjectProvider<ChatModel> provider = mock(ObjectProvider.class);
+    ChatModel model = mock(ChatModel.class);
+    when(provider.getIfAvailable()).thenReturn(model);
+    when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+    when(model.call(any(Prompt.class)))
+        .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("""
+            {"rootCategoryId":"root","sectionCategoryId":"section","leafCategoryId":"invented","reason":"Router"}
+            """)))))
+        .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("""
+            {"type":"NEW_CATEGORY","parentId":"  SECTION  ","names":["Networking","Routers"],"reason":"No router leaf"}
+            """)))));
+    var service = new GeminiCategorySuggestionService(provider, new ObjectMapper());
+    var suggestion = service.suggest(product(), categoryTree());
+    assertEquals(AiSuggestion.Type.NEW_CATEGORY, suggestion.type());
+    assertEquals("section", suggestion.proposal().parentId());
+    assertEquals(List.of("Routers"), suggestion.proposal().names());
+    verify(model, times(2)).call(any(Prompt.class));
+  }
+
+  private List<Category> categoryTree() {
+    return List.of(new Category("root", "Electronics", null, 1, null),
+        new Category("section", "Computers", "root", 2, null),
+        new Category("leaf", "Laptops", "section", 3, null));
   }
 }

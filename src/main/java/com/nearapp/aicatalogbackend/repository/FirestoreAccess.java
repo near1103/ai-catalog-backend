@@ -15,7 +15,12 @@ final class FirestoreAccess {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw ApiException.external("Database request interrupted");
-    } catch (ExecutionException | TimeoutException e) {
+    } catch (ExecutionException e) {
+      for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+        if (cause instanceof ApiException failure) throw failure;
+      }
+      throw ApiException.external("Database unavailable");
+    } catch (TimeoutException e) {
       throw ApiException.external("Database unavailable");
     }
   }

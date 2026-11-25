@@ -3,11 +3,13 @@ package com.nearapp.aicatalogbackend.service;
 import com.nearapp.aicatalogbackend.dto.ProductInput;
 import com.nearapp.aicatalogbackend.exception.ApiException;
 import com.nearapp.aicatalogbackend.model.AiSuggestion;
+import com.nearapp.aicatalogbackend.model.Category;
 import com.nearapp.aicatalogbackend.model.CategorySource;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductImage;
 import com.nearapp.aicatalogbackend.model.ProductStatus;
 import com.nearapp.aicatalogbackend.repository.ProductRepository;
+import com.nearapp.aicatalogbackend.repository.ProductRepository.CategoryCreation;
 import com.nearapp.aicatalogbackend.storage.FileStorageService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -143,10 +145,22 @@ public class ProductService {
 
   public synchronized Product suggest(String id) {
     var p = get(id);
-    var suggestion = ai.suggest(p, categories.list());
+    var tree = categories.list();
+    var suggestion = ai.suggest(p, tree);
     try {
-      categories.validatePath(suggestion);
-    } catch (RuntimeException e) {
+      if (suggestion != null && suggestion.type() == AiSuggestion.Type.NEW_CATEGORY) {
+        var proposal = suggestion.proposal();
+        if (proposal == null || proposal.id() == null || proposal.id().isBlank()
+            || suggestion.reason() == null || suggestion.reason().isBlank())
+          throw ApiException.bad("Invalid category proposal");
+        var names = CategoryService.normalizeProposalNames(proposal.names());
+        CategoryService.validateNewPath(proposal.parentId(), names, tree);
+        suggestion = AiSuggestion.newCategory(suggestion.reason(),
+            new AiSuggestion.Proposal(proposal.id(), proposal.parentId(), names));
+      } else {
+        categories.validatePath(suggestion);
+      }
+    } catch (ApiException e) {
       throw ApiException.external(
           "Gemini returned an invalid category path; select a category manually");
     }
@@ -162,9 +176,38 @@ public class ProductService {
         p.categorySource());
   }
 
+  public synchronized Product createSuggestedCategory(String id, String proposalId, List<String> names) {
+    return products.createCategories(id, (p, tree) -> {
+      var suggestion = p.aiSuggestion();
+      var proposal = suggestion == null ? null : suggestion.proposal();
+      if (proposal == null || suggestion.type() != AiSuggestion.Type.NEW_CATEGORY
+          || !proposal.id().equals(proposalId))
+        throw ApiException.conflict("Category proposal is no longer current. Generate a new suggestion");
+
+      var normalized = CategoryService.normalizeProposalNames(names);
+      if (normalized.size() != proposal.names().size())
+        throw ApiException.bad("Keep the same number of category levels as the proposal");
+      CategoryService.validateNewPath(proposal.parentId(), normalized, tree);
+
+      String parentId = proposal.parentId();
+      int level = 4 - normalized.size();
+      var created = new ArrayList<Category>();
+      for (var name : normalized) {
+        String categoryId = UUID.randomUUID().toString();
+        created.add(new Category(categoryId, name, parentId, level++, null));
+        parentId = categoryId;
+      }
+      var updated = new Product(p.id(), p.name(), p.description(), p.characteristics(), p.images(),
+          parentId, p.status(), null, CategorySource.AI, p.createdAt(), Instant.now());
+      return new CategoryCreation(updated, created);
+    });
+  }
+
   public synchronized Product acceptSuggestion(String id) {
     var p = get(id);
     if (p.aiSuggestion() == null) throw ApiException.bad("No suggestion to accept");
+    if (p.aiSuggestion().type() == AiSuggestion.Type.NEW_CATEGORY)
+      throw ApiException.bad("Confirm new categories using create-category");
     categories.validatePath(p.aiSuggestion());
     return save(
         p,

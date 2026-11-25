@@ -20,10 +20,13 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.databind.JsonNode;
 
 @RestController
 @RequestMapping("/api/admin/products")
 public class AdminProductController {
+  public record CreateSuggestedCategory(String proposalId, List<JsonNode> names) {}
+
   private final ProductService products;
 
   public AdminProductController(ProductService products) {
@@ -66,6 +69,13 @@ public class AdminProductController {
   @PostMapping("/{id}/ai-suggestion/accept")
   public Product accept(@PathVariable String id) {
     return products.acceptSuggestion(id);
+  }
+
+  @PostMapping("/{id}/ai-suggestion/create-category")
+  public Product createCategory(@PathVariable String id, @RequestBody CreateSuggestedCategory input) {
+    var names = input.names() == null ? null : input.names().stream()
+        .map(name -> name == null ? null : name.stringValue()).toList();
+    return products.createSuggestedCategory(id, input.proposalId(), names);
   }
 
   @DeleteMapping("/{id}/ai-suggestion")

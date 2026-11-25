@@ -25,4 +25,8 @@ public class ApiException extends RuntimeException {
   public static ApiException external(String message) {
     return new ApiException(HttpStatus.BAD_GATEWAY, message);
   }
+
+  public static ApiException conflict(String message) {
+    return new ApiException(HttpStatus.CONFLICT, message);
+  }
 }

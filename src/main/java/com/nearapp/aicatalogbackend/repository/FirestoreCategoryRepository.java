@@ -21,7 +21,7 @@ public class FirestoreCategoryRepository implements CategoryRepository {
     collection = db.collection("categories");
   }
 
-  private Category read(DocumentSnapshot d) {
+  static Category read(DocumentSnapshot d) {
     return new Category(
         d.getId(),
         d.getString("name"),
@@ -32,7 +32,7 @@ public class FirestoreCategoryRepository implements CategoryRepository {
   }
 
   public List<Category> findAll() {
-    return await(collection.get()).getDocuments().stream().map(this::read).toList();
+    return await(collection.get()).getDocuments().stream().map(FirestoreCategoryRepository::read).toList();
   }
 
   public Optional<Category> findById(String value) {
@@ -43,14 +43,18 @@ public class FirestoreCategoryRepository implements CategoryRepository {
 
   public Category save(Category c) {
     id(c.id());
+    await(collection.document(c.id()).set(fields(c)));
+    return c;
+  }
+
+  static Map<String, Object> fields(Category c) {
     Map<String, Object> m = new HashMap<>();
     m.put("name", c.name());
     m.put("parentId", c.parentId());
     m.put("level", c.level());
     m.put("imageUrl", c.imageUrl());
     m.put("imageStorageKey", c.imageStorageKey());
-    await(collection.document(c.id()).set(m));
-    return c;
+    return m;
   }
 
   public void delete(String value) {
