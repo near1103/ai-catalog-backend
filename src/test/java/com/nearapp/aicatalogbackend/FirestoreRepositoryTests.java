@@ -29,8 +29,9 @@ import com.nearapp.aicatalogbackend.model.CategorySource;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductImage;
 import com.nearapp.aicatalogbackend.model.ProductStatus;
+import com.nearapp.aicatalogbackend.repository.FirestoreCategoryProposalRepository;
 import com.nearapp.aicatalogbackend.repository.FirestoreProductRepository;
-import com.nearapp.aicatalogbackend.repository.ProductRepository.CategoryCreation;
+import com.nearapp.aicatalogbackend.repository.CategoryProposalRepository.CategoryCreation;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +116,7 @@ class FirestoreRepositoryTests {
     var products = mock(CollectionReference.class);
     var categories = mock(CollectionReference.class);
     var productRef = mock(DocumentReference.class);
+    var sectionRef = mock(DocumentReference.class);
     var categoryRef = mock(DocumentReference.class);
     var transaction = mock(Transaction.class);
     var document = mock(DocumentSnapshot.class);
@@ -122,6 +124,7 @@ class FirestoreRepositoryTests {
     when(db.collection("products")).thenReturn(products);
     when(db.collection("categories")).thenReturn(categories);
     when(products.document("p")).thenReturn(productRef);
+    when(categories.document("section")).thenReturn(sectionRef);
     when(categories.document("leaf")).thenReturn(categoryRef);
     when(transaction.get(productRef)).thenReturn(ApiFutures.immediateFuture(document));
     when(transaction.get(categories)).thenReturn(ApiFutures.immediateFuture(tree));
@@ -138,14 +141,16 @@ class FirestoreRepositoryTests {
         return ApiFutures.immediateFailedFuture(failure);
       }
     });
-    var repository = new FirestoreProductRepository(db);
+    var repository = new FirestoreCategoryProposalRepository(db);
     var result = repository.createCategories("p", (p, rows) -> new CategoryCreation(
         new Product(p.id(), p.name(), p.description(), p.characteristics(), p.images(),
             "leaf", p.status(), null, CategorySource.AI, p.createdAt(), Instant.now()),
-        List.of(new Category("leaf", "Mesh", "section", 3, null))));
+        List.of(new Category("section", "Networking", "root", 2, null),
+            new Category("leaf", "Mesh", "section", 3, null))));
     var ordered = inOrder(transaction);
     ordered.verify(transaction).get(productRef);
     ordered.verify(transaction).get(categories);
+    ordered.verify(transaction).create(eq(sectionRef), any(Map.class));
     ordered.verify(transaction).create(eq(categoryRef), any(Map.class));
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Map<String, Object>> fields = ArgumentCaptor.forClass(Map.class);
@@ -161,6 +166,7 @@ class FirestoreRepositoryTests {
       throw ApiException.conflict("Stale proposal");
     }));
     assertEquals(409, conflict.status().value());
+    verify(transaction).create(eq(sectionRef), any(Map.class));
     verify(transaction).create(eq(categoryRef), any(Map.class));
     verify(transaction).update(eq(productRef), any(Map.class));
   }

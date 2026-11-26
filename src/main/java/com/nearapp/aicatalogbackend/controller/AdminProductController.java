@@ -1,9 +1,11 @@
 package com.nearapp.aicatalogbackend.controller;
 
 import com.nearapp.aicatalogbackend.dto.CategorySelection;
+import com.nearapp.aicatalogbackend.dto.CreateSuggestedCategory;
 import com.nearapp.aicatalogbackend.dto.ProductInput;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductStatus;
+import com.nearapp.aicatalogbackend.service.CategoryProposalService;
 import com.nearapp.aicatalogbackend.service.ProductService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -20,17 +22,17 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import tools.jackson.databind.JsonNode;
 
 @RestController
 @RequestMapping("/api/admin/products")
 public class AdminProductController {
-  public record CreateSuggestedCategory(String proposalId, List<JsonNode> names) {}
-
   private final ProductService products;
 
-  public AdminProductController(ProductService products) {
+  private final CategoryProposalService proposals;
+
+  public AdminProductController(ProductService products, CategoryProposalService proposals) {
     this.products = products;
+    this.proposals = proposals;
   }
 
   @GetMapping
@@ -75,7 +77,7 @@ public class AdminProductController {
   public Product createCategory(@PathVariable String id, @RequestBody CreateSuggestedCategory input) {
     var names = input.names() == null ? null : input.names().stream()
         .map(name -> name == null ? null : name.stringValue()).toList();
-    return products.createSuggestedCategory(id, input.proposalId(), names);
+    return proposals.createSuggestedCategory(id, input.proposalId(), names);
   }
 
   @DeleteMapping("/{id}/ai-suggestion")

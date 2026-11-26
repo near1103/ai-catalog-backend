@@ -30,10 +30,12 @@ import com.nearapp.aicatalogbackend.model.CategorySource;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductImage;
 import com.nearapp.aicatalogbackend.model.ProductStatus;
+import com.nearapp.aicatalogbackend.repository.CategoryProposalRepository;
 import com.nearapp.aicatalogbackend.repository.ProductRepository;
-import com.nearapp.aicatalogbackend.repository.ProductRepository.CategoryCreation;
+import com.nearapp.aicatalogbackend.repository.CategoryProposalRepository.CategoryCreation;
 import com.nearapp.aicatalogbackend.service.CategoryService;
 import com.nearapp.aicatalogbackend.service.CategorySuggestionService;
+import com.nearapp.aicatalogbackend.service.CategoryProposalService;
 import com.nearapp.aicatalogbackend.service.ProductService;
 import com.nearapp.aicatalogbackend.storage.FileStorageService;
 import java.time.Instant;
@@ -51,6 +53,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 class ProductServiceTests {
   ProductRepository repo;
+  CategoryProposalRepository proposalRepo;
+  CategoryProposalService proposals;
   CategoryService categories;
   FileStorageService storage;
   CategorySuggestionService ai;
@@ -64,6 +68,8 @@ class ProductServiceTests {
     storage = mock(FileStorageService.class);
     ai = mock(CategorySuggestionService.class);
     service = new ProductService(repo, categories, storage, ai);
+    proposalRepo = mock(CategoryProposalRepository.class);
+    proposals = new CategoryProposalService(service, proposalRepo);
     current =
         new Product(
             "p",
@@ -303,11 +309,11 @@ class ProductServiceTests {
     assertEquals("Mesh systems", suggested.aiSuggestion().proposal().names().getLast());
     assertThrows(ApiException.class, () -> service.acceptSuggestion("p"));
     assertEquals(409, assertThrows(ApiException.class,
-        () -> service.createSuggestedCategory("p", "obsolete", names)).status().value());
+        () -> proposals.createSuggestedCategory("p", "obsolete", names)).status().value());
 
     var edited = new ArrayList<>(names);
     edited.set(edited.size() - 1, "  Mesh Wi-Fi systems  ");
-    var confirmed = service.createSuggestedCategory("p", "proposal", edited);
+    var confirmed = proposals.createSuggestedCategory("p", "proposal", edited);
     assertEquals(ProductStatus.ACTIVE, confirmed.status());
     assertEquals(CategorySource.AI, confirmed.categorySource());
     assertNull(confirmed.aiSuggestion());
@@ -325,7 +331,7 @@ class ProductServiceTests {
     service.update("p", new ProductInput("Newer name", "Description", current.characteristics()));
     var afterEdit = current;
     assertEquals(409, assertThrows(ApiException.class,
-        () -> service.createSuggestedCategory("p", "proposal", edited)).status().value());
+        () -> proposals.createSuggestedCategory("p", "proposal", edited)).status().value());
     assertEquals(afterEdit, current);
     assertEquals(3, tree.size());
   }
@@ -339,18 +345,18 @@ class ProductServiceTests {
     mockCategoryCreation(tree);
     var suggested = service.suggest("p");
     assertEquals(400, assertThrows(ApiException.class,
-        () -> service.createSuggestedCategory("p", "proposal", List.of("Networking"))).status().value());
+        () -> proposals.createSuggestedCategory("p", "proposal", List.of("Networking"))).status().value());
     assertEquals(400, assertThrows(ApiException.class,
-        () -> service.createSuggestedCategory("p", "proposal", List.of("Networking", "   "))).status().value());
+        () -> proposals.createSuggestedCategory("p", "proposal", List.of("Networking", "   "))).status().value());
     tree.add(new Category("section", "Networking", "root", 2, null));
     assertEquals(409, assertThrows(ApiException.class,
-        () -> service.createSuggestedCategory("p", "proposal", List.of("  NETWORKING  ", "Mesh"))).status().value());
+        () -> proposals.createSuggestedCategory("p", "proposal", List.of("  NETWORKING  ", "Mesh"))).status().value());
     assertEquals(suggested, current);
     assertNull(service.rejectSuggestion("p").aiSuggestion());
   }
 
   private void mockCategoryCreation(List<Category> tree) {
-    when(repo.createCategories(eq("p"), any())).thenAnswer(invocation -> {
+    when(proposalRepo.createCategories(eq("p"), any())).thenAnswer(invocation -> {
       BiFunction<Product, List<Category>, CategoryCreation> prepare = invocation.getArgument(1);
       var creation = prepare.apply(current, List.copyOf(tree));
       tree.addAll(creation.categories());
@@ -366,7 +372,7 @@ class ProductServiceTests {
     when(ai.suggest(any(), eq(tree))).thenReturn(AiSuggestion.newCategory("Empty tree",
         new AiSuggestion.Proposal("proposal", null, List.of("Electronics", "Networking", "Mesh"))));
     mockCategoryCreation(tree);
-    var mvc = MockMvcBuilders.standaloneSetup(new AdminProductController(service))
+    var mvc = MockMvcBuilders.standaloneSetup(new AdminProductController(service, proposals))
         .setControllerAdvice(new ApiExceptionHandler()).build();
     var product = "/api/admin/products/p";
     var suggest = product + "/ai-suggestion";

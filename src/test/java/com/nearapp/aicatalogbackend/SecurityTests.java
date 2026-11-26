@@ -19,6 +19,7 @@ import com.nearapp.aicatalogbackend.controller.PublicCatalogController;
 import com.nearapp.aicatalogbackend.exception.ApiExceptionHandler;
 import com.nearapp.aicatalogbackend.model.Category;
 import com.nearapp.aicatalogbackend.security.FirebaseTokenVerifier;
+import com.nearapp.aicatalogbackend.service.CategoryProposalService;
 import com.nearapp.aicatalogbackend.service.CategoryService;
 import com.nearapp.aicatalogbackend.service.ProductService;
 import java.util.List;
@@ -43,6 +44,7 @@ import org.springframework.test.web.servlet.MockMvc;
 class SecurityTests {
   @Autowired MockMvc mvc;
   @MockitoBean ProductService products;
+  @MockitoBean CategoryProposalService proposals;
   @MockitoBean CategoryService categories;
   @MockitoBean FirebaseTokenVerifier verifier;
 

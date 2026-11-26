@@ -4,6 +4,7 @@ import com.nearapp.aicatalogbackend.exception.ApiException;
 import com.nearapp.aicatalogbackend.model.AiSuggestion;
 import com.nearapp.aicatalogbackend.service.CategoryService;
 import com.nearapp.aicatalogbackend.service.GeminiCategorySuggestionService;
+import com.nearapp.aicatalogbackend.service.SuggestionResponse;
 import com.nearapp.aicatalogbackend.service.GeminiCategorySuggestionService.ProviderStatus;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -64,7 +65,7 @@ final class GeminiEvaluation {
       GeminiCategorySuggestionService gemini) {
     var product = job.row().product(job.phase() == Phase.REORDERED);
     long start = System.nanoTime();
-    GeminiCategorySuggestionService.SuggestionResponse response;
+    SuggestionResponse response;
     try {
       response = gemini.suggestWithMetadata(product, tree.categories());
     } catch (ApiException error) {
@@ -120,7 +121,7 @@ final class GeminiEvaluation {
   }
 
   private static Result result(Job job, Status status, AiSuggestion answer, String version, Integer code,
-      Double elapsed, GeminiCategorySuggestionService.SuggestionResponse response) {
+      Double elapsed, SuggestionResponse response) {
     var row = job.row();
     String root = answer == null ? null : answer.rootCategoryId();
     String section = answer == null ? null : answer.sectionCategoryId();

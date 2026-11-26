@@ -10,6 +10,7 @@ import com.nearapp.aicatalogbackend.model.CategorySource;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductStatus;
 import com.nearapp.aicatalogbackend.service.GeminiCategorySuggestionService;
+import com.nearapp.aicatalogbackend.service.SuggestionResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -128,7 +129,7 @@ class EvaluationTests {
     var jobs = GeminiEvaluation.plan(List.of(row), 1, 3, true);
     var checkpoint = new EvaluationCheckpoint(dir, json);
     var mockService = mock(GeminiCategorySuggestionService.class);
-    var answer = new GeminiCategorySuggestionService.SuggestionResponse(
+    var answer = new SuggestionResponse(
         new AiSuggestion("root", "section", "leaf", "Reason", null), "gemini-fixture", 10, 3, 13);
     when(mockService.suggestWithMetadata(any(), any()))
         .thenReturn(answer).thenThrow(new IllegalStateException("simulated exit before recording"));
@@ -176,7 +177,7 @@ class EvaluationTests {
             EvaluationCheckpoint.hash(Files.readAllBytes(treePath)), "gemini-fixture", "fixture", promptHash,
             planHash, 1, offline), json);
     var mockService = mock(GeminiCategorySuggestionService.class);
-    when(mockService.suggestWithMetadata(any(), any())).thenReturn(new GeminiCategorySuggestionService.SuggestionResponse(
+    when(mockService.suggestWithMetadata(any(), any())).thenReturn(new SuggestionResponse(
         new AiSuggestion("root", "section", "leaf", "Fixture", null), "gemini-fixture", null, null, null));
     var recorded = new ArrayList<GeminiEvaluation.Result>();
     new EvaluationCheckpoint(dir, json).execute(jobs, recorded, tree, mockService, 1);

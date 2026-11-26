@@ -7,9 +7,7 @@ import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.CollectionReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.Firestore;
-import com.nearapp.aicatalogbackend.exception.ApiException;
 import com.nearapp.aicatalogbackend.model.AiSuggestion;
-import com.nearapp.aicatalogbackend.model.Category;
 import com.nearapp.aicatalogbackend.model.CategorySource;
 import com.nearapp.aicatalogbackend.model.Product;
 import com.nearapp.aicatalogbackend.model.ProductImage;
@@ -20,16 +18,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.BiFunction;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class FirestoreProductRepository implements ProductRepository {
-  private final Firestore db;
   private final CollectionReference collection;
 
   public FirestoreProductRepository(Firestore db) {
-    this.db = db;
     collection = db.collection("products");
   }
 
@@ -42,7 +37,7 @@ public class FirestoreProductRepository implements ProductRepository {
   }
 
   @SuppressWarnings("unchecked")
-  private Product read(DocumentSnapshot d) {
+  static Product read(DocumentSnapshot d) {
     var m = d.getData();
     var images = new ArrayList<ProductImage>();
     for (var image : (List<Map<String, Object>>) m.getOrDefault("images", List.of()))
@@ -105,12 +100,12 @@ public class FirestoreProductRepository implements ProductRepository {
   }
 
   public List<Product> findAll() {
-    return await(collection.get()).getDocuments().stream().map(this::read).toList();
+    return await(collection.get()).getDocuments().stream().map(FirestoreProductRepository::read).toList();
   }
 
   public List<Product> findActive() {
     return await(collection.whereEqualTo("status", "ACTIVE").get()).getDocuments().stream()
-        .map(this::read)
+        .map(FirestoreProductRepository::read)
         .toList();
   }
 
@@ -150,31 +145,6 @@ public class FirestoreProductRepository implements ProductRepository {
     m.put("updatedAt", p.updatedAt().toString());
     await(collection.document(p.id()).set(m));
     return p;
-  }
-
-  @Override
-  public Product createCategories(String productId,
-      BiFunction<Product, List<Category>, CategoryCreation> prepare) {
-    id(productId);
-    var productRef = collection.document(productId);
-    var categoryCollection = db.collection("categories");
-    return await(db.runTransaction(transaction -> {
-      var document = transaction.get(productRef).get();
-      if (!document.exists()) throw ApiException.missing();
-      var tree = transaction.get(categoryCollection).get().getDocuments().stream()
-          .map(FirestoreCategoryRepository::read).toList();
-      var creation = prepare.apply(read(document), tree);
-      for (var category : creation.categories())
-        transaction.create(categoryCollection.document(category.id()), FirestoreCategoryRepository.fields(category));
-      var product = creation.product();
-      var fields = new HashMap<String, Object>();
-      fields.put("categoryId", product.categoryId());
-      fields.put("categorySource", product.categorySource().name());
-      fields.put("aiSuggestion", null);
-      fields.put("updatedAt", product.updatedAt().toString());
-      transaction.update(productRef, fields);
-      return product;
-    }));
   }
 
   public void delete(String value) {
